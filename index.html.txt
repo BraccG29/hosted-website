@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What Should We Eat Tonight?</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+ font-family: Arial, sans-serif;
+ display: flex;
+ justify-content: center;
+ padding-top: 60px;
+ background: #f0f2f5;
+}
+
+.card {
+ background: white;
+ padding: 30px;
+ border-radius: 20px;
+ box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+ text-align: center;
+ width: 420px;
+}
+
+h1 {
+ margin-bottom: 10px;
+}
+
+.button-group {
+ margin: 20px 0;
+ display: flex;
+ justify-content: center;
+ gap: 10px;
+}
+
+button {
+ padding: 12px 16px;
+ border: none;
+ border-radius: 10px;
+ cursor: pointer;
+ color: white;
+ font-weight: bold;
+ transition: 0.2s;
+}
+
+button:hover {
+ transform: scale(1.05);
+}
+
+.btn-pizza { background: #f97316; }
+.btn-fast { background: #fbbf24; }
+.btn-home { background: #34d399; }
+
+#status {
+ font-size: 0.8rem;
+ color: #666;
+ margin-top: 15px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+<h1> What should we eat tonight?</h1>
+
+<div class="button-group">
+<button class="btn-pizza" onclick="castVote('Pizza')"> Pizza</button>
+<button class="btn-fast" onclick="castVote('Fast Food')"> Fast Food</button>
+<button class="btn-home" onclick="castVote('Home Cooked')"> Home Cooked</button>
+</div>
+
+<canvas id="voteChart"></canvas>
+<div id="status">Connecting to database...</div>
+</div>
+
+<script>
+//  PASTE YOUR SUPABASE KEYS HERE
+const SUPABASE_URL = "https://cealqdlysgirayknsudm.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_skpDAo7Jg-lKCF8jEXSZAQ_p_yOiRSB";
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let myChart;
+const voteCounts = {
+ 'Pizza': 0,
+ 'Fast Food': 0,
+ 'Home Cooked': 0
+};
+
+// Initialize Chart
+function initChart() {
+ const ctx = document.getElementById('voteChart').getContext('2d');
+ myChart = new Chart(ctx, {
+   type: 'bar',
+   data: {
+     labels: ['Pizza', 'Fast Food', 'Home Cooked'],
+     datasets: [{
+       label: 'Votes',
+       data: [0, 0, 0],
+       backgroundColor: ['#f97316', '#fbbf24', '#34d399']
+     }]
+   },
+   options: {
+     responsive: true,
+     scales: {
+       y: {
+         beginAtZero: true,
+         ticks: { precision: 0 }
+       }
+     }
+   }
+ });
+}
+
+// Vote function
+async function castVote(choice) {
+ const { error } = await supabaseClient
+   .from('votes')
+   .insert([{ choice: choice }]);
+
+ if (error) {
+   console.error(error);
+   document.getElementById('status').innerText = "Error submitting vote!";
+ } else {
+   document.getElementById('status').innerText = " Vote counted!";
+ }
+}
+
+// Load + realtime
+async function setup() {
+ initChart();
+
+ // Load existing votes
+ const { data, error } = await supabaseClient
+   .from('votes')
+   .select('choice');
+
+ if (!error && data) {
+   data.forEach(v => {
+     if (voteCounts[v.choice] !== undefined) {
+       voteCounts[v.choice]++;
+     }
+   });
+ }
+
+ updateChart();
+
+ // Realtime updates
+ supabaseClient
+   .channel('live-votes')
+   .on('postgres_changes',
+     { event: 'INSERT', schema: 'public', table: 'votes' },
+     payload => {
+       const choice = payload.new.choice;
+       if (voteCounts[choice] !== undefined) {
+         voteCounts[choice]++;
+         updateChart();
+       }
+     }
+   )
+   .subscribe();
+
+ document.getElementById('status').innerText = " Live and connected!";
+}
+
+// Update chart
+function updateChart() {
+ myChart.data.datasets[0].data = [
+   voteCounts['Pizza'],
+   voteCounts['Fast Food'],
+   voteCounts['Home Cooked']
+ ];
+ myChart.update();
+}
+
+setup();
+</script>
+
+</body>
+</html>
